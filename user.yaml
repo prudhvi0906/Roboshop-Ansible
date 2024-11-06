@@ -1,0 +1,85 @@
+- name: user
+  hosts: user
+  become: yes
+  tasks:
+    - name: disable old nodejs and enable nodejs:18
+      ansible.builtin.shell: dnf module disable nodejs -y ; dnf module enable nodejs:18 -y 
+
+    - name: install nodejs
+      ansible.builtin.package:
+        name: nodejs
+        state: present
+
+    - name: Create roboshop user
+      ansible.builtin.user:
+        name: roboshop
+
+    - name: Create app directory
+      ansible.builtin.file:
+        path: /app
+        state: directory
+
+    - name: Download user application
+      ansible.builtin.get_url:
+        url: https://roboshop-builds.s3.amazonaws.com/user.zip
+        dest: /tmp
+
+    - name: Extract user application
+      ansible.builtin.unarchive:
+        src: /tmp/user.zip
+        dest: /app
+        remote_src: yes
+
+    - name: Install npm
+      ansible.builtin.command: npm install
+      args:
+        chdir: /app
+
+    - name: Copy user.service
+      ansible.builtin.copy:
+        src: user.service
+        dest: /etc/systemd/system/user.service
+
+    - name: system deamon reload and start
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    #lets start after data is reloaded
+
+    - name: Copy mongodb.repo
+      ansible.builtin.copy:
+        src: mongodb.repo
+        dest: /etc/yum.repos.d/mongodb.repo
+
+    - name: Install mongodb client
+      ansible.builtin.package:
+        name: mongodb-org-shell 
+        state: present
+
+    - name: get the categories count
+      ansible.builtin.command:  mongo --host mongodb.prudhvi.online --quiet --eval 'db = db.getSiblingDB("users"); db.users.count()'
+      register: user_count
+
+    # - name: print the count
+    #   ansible.builtin.debug:
+    #     msg: "product count: {{user_count}}"
+
+    - name: load user data
+      ansible.builtin.command: mongo --host mongodb.prudhvi.online < /app/schema/user.js
+      when: user_count.stdout == "0"
+
+    - name: Start and enable user
+      ansible.builtin.service:
+        name: user
+        state: restarted  
+        enabled: yes
+
+
+
+    
+
+
+
+  
+
+
